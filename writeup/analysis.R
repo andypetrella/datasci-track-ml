@@ -27,6 +27,10 @@ summary(training)
 
 # Since we're doing a classification, the real AdaBoost is the most approrpriate (I almost know) which
 # use tree to output probability to be of a certain class.
+library(caret)
+library(ada)
+library(rpart)
+adaboostModel <- train(classe~., method="ada", type="real", data=training, iter=2, verbose=TRUE)
 
 
 # I could also try to mimic the exact analysis that the paper mentions, AdaBoost with C4.5!
