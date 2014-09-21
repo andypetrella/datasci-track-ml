@@ -1,0 +1,159 @@
+<h2 id="introduction">Introduction</h2>
+<p>This report is my proposal for the Coursera's Pratical Machine Learning course, part of the Data Science Specialization.</p>
+<p>The subject of this project is the analysis of physical performance data collected on 6 participant to the <a href="http://groupware.les.inf.puc-rio.br/har">Groupware</a> project. Some metrics were collected on the participants during physical exercices they've been asked to execute. The differiciation between the exercices has been introduced by explaining distinctly how to perform them, thus 1 participant had the right explaination, the others had different wrong ones.</p>
+<p>The data have been opened sourced, but we'll analyse the two samples below, where the training set contains a column <code>classe</code> that gives the indication about how the exercice was performed: * <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv">training data</a> * <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv">unclassified observations</a></p>
+<p>The goal of this report is then to provide a model trained and validation on the training set in order to classify the second set.</p>
+<h2 id="executive-summary">Executive Summary</h2>
+<p>The very first step made in this analysis was to load the data and take a look at their caracteristics. What was quickly obvious is that most of the 160 columns are numeric and represent data collected from the sensors, however most of the metrics were empty of non interpretable because the number of missing data was more than 95% (of 19622 rows).</p>
+<p>So the analysis gets rid of them, that is all 100 columns that had this highly sparsed data, but also the <code>X</code> variable (which is the index of the row) and finally all non numeric columns. The <code>X</code> column was removed because, it had a too higher (100) score in the variable importance of the final model (random forest, see below) and its due to the fact that the rows are ordered (or grouped by) the name of the participant.</p>
+<p>After having cleaned the data, given the number of feature left (60), I ran a random forest on a subset of the training data a cross validation of 10 folds and <code>R</code>'s the default number of tree built (500). It took a while, so the model has been saved locally to safe further analyses if needed. The resulting model was highly accurate with an OOB estimated at less than 0.09%.</p>
+<p>On the validation set, the confusion matrix tells us that the accuracy is impressvly high, with a 0.9993 score.</p>
+<p>All that, let us think that the current metrics taken on the participants, even after removing most of them, are sufficiant to detect the way the participant were told how to do the exercices. Which, in a sense, has quite good sense since the metrics taken were recording the movements, and they were all different.</p>
+<h2 id="analysis">Analysis</h2>
+<p>The full analysis is available and reproductible by running the script <code>analysis.R</code>. However, here we'll present the essence of it.</p>
+<p>First we load the data provided in the exercice's text, then we perform some cleaning on it (NA's and get rid of unrelevant variables).</p>
+<pre class="sourceCode r"><code class="sourceCode r">training.url &lt;-<span class="st"> &quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;</span>
+testing.url &lt;-<span class="st"> &quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;</span>
+<span class="kw">download.file</span>(training.url, <span class="dt">destfile=</span><span class="st">&quot;pml-training.csv&quot;</span>, <span class="dt">method=</span><span class="st">&quot;curl&quot;</span>)
+<span class="kw">download.file</span>(testing.url, <span class="dt">destfile=</span><span class="st">&quot;pml-testing.csv&quot;</span>, <span class="dt">method=</span><span class="st">&quot;curl&quot;</span>)
+
+na.strings &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;&quot;</span>, <span class="st">&quot;NA&quot;</span>, <span class="st">&quot;#DIV/0!&quot;</span>)
+training &lt;-<span class="st"> </span><span class="kw">read.csv</span>(<span class="st">&quot;pml-training.csv&quot;</span>, <span class="dt">na.strings=</span>na.strings)
+testing &lt;-<span class="st"> </span><span class="kw">read.csv</span>(<span class="st">&quot;pml-testing.csv&quot;</span>, <span class="dt">na.strings=</span>na.strings)
+
+<span class="co"># &quot;X&quot; is simply the index of the rows so we can get rid of it</span>
+training &lt;-<span class="st"> </span>training[, -<span class="dv">1</span>]
+
+dd &lt;-<span class="st"> </span><span class="kw">dim</span>(training)
+<span class="co"># which variables have NA&#39;s in it =&gt; take out the freq</span>
+with.nas &lt;-<span class="st"> </span><span class="kw">sort</span>(<span class="kw">Filter</span>(function(x) x &gt;<span class="st"> </span><span class="dv">0</span>, 
+                        <span class="kw">sapply</span>(training, function(x)<span class="kw">sum</span>(<span class="kw">is.na</span>(x))) /<span class="st"> </span>dd[<span class="dv">1</span>]))
+<span class="co"># those with high freq will be discarded</span>
+with.too.many.nas &lt;-<span class="st"> </span><span class="kw">Filter</span>(function(x) x &gt;<span class="st"> </span><span class="fl">0.95</span>, with.nas)
+<span class="co"># percentage of almost empty values</span>
+<span class="co">#(length(with.too.many.nas) / dd[2])*100</span>
+
+<span class="co"># now we remove the columns out of the datasets</span>
+training.neat &lt;-<span class="st"> </span>training[, -<span class="kw">which</span>(<span class="kw">names</span>(training) %in%<span class="st"> </span><span class="kw">names</span>(with.too.many.nas))]
+testing.neat &lt;-<span class="st"> </span>testing[, -<span class="kw">which</span>(<span class="kw">names</span>(testing) %in%<span class="st"> </span><span class="kw">names</span>(with.too.many.nas))]
+
+<span class="co"># take out the classe before removing all non numeric variables</span>
+training.classe &lt;-<span class="st"> </span>training.neat$classe
+non.numeric.cols &lt;-<span class="st"> </span><span class="kw">Filter</span>(function(x) !<span class="kw">is.numeric</span>(training.neat[, x]), <span class="kw">names</span>(training.neat))
+<span class="co"># remove all non numeric cols</span>
+training.neat &lt;-<span class="st"> </span>training.neat[, -(<span class="kw">which</span>(<span class="kw">names</span>(training.neat) %in%<span class="st"> </span>non.numeric.cols))]
+training.neat &lt;-<span class="st"> </span><span class="kw">data.frame</span>(<span class="dt">classe=</span>training.classe, training.neat)
+
+<span class="co"># remove unecessary variables</span>
+testing.neat &lt;-<span class="st"> </span>testing.neat[, -(<span class="kw">which</span>(<span class="kw">names</span>(testing.neat) %in%<span class="st"> </span>non.numeric.cols))]
+
+<span class="co">#summary(training.neat)</span>
+<span class="kw">dim</span>(training.neat)</code></pre>
+<pre><code>## [1] 19622    56</code></pre>
+<p>For the sake of sanity (and to easily present a confusion matrix of the training model) we create two samples out of the classified, cleaned data set.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># let&#39;s split into a training set and validation set, </span>
+<span class="co"># even though cross validation will be used </span>
+<span class="co"># -- so we can check easily the OOB</span>
+inTrain &lt;-<span class="st"> </span><span class="kw">createDataPartition</span>(training.neat$classe, <span class="dt">p=</span><span class="fl">0.70</span>, <span class="dt">list=</span><span class="ot">FALSE</span>)
+training.set &lt;-<span class="st"> </span>training.neat[inTrain,]
+validation.set &lt;-<span class="st"> </span>training.neat[-inTrain,]</code></pre>
+<p>Now we can train our random forest on the 70% training set, using this code that will make use of the <code>caret</code> generic interface.</p>
+<pre class="sourceCode r"><code class="sourceCode r">  <span class="co"># train a random forest on the cleaned training set with 10 folds</span>
+  rf.fit.cross.validation &lt;-<span class="st"> </span><span class="kw">train</span>(
+    training.set$classe ~<span class="st"> </span>.,
+    <span class="dt">data=</span>training.set, 
+    <span class="dt">method=</span><span class="st">&quot;rf&quot;</span>,
+    <span class="dt">trControl=</span><span class="kw">trainControl</span>(<span class="dt">method =</span> <span class="st">&quot;cv&quot;</span>, <span class="dt">number =</span> <span class="dv">10</span>)
+  )</code></pre>
+<p>Although we could run it from this R markup, we will load the result locally because it can (will) take a while to train.</p>
+<pre class="sourceCode r"><code class="sourceCode r">  <span class="kw">load</span>(<span class="dt">file=</span><span class="st">&quot;rf.fit.cross.validation_wo_X.RData&quot;</span>)</code></pre>
+<p>This gives access to the <code>rf.fit.cross.validation</code> variable, being our trained random forest. Which model being the one that gave us the great results presented in the executive summary.</p>
+<p>Here is the final model.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">print</span>(rf.fit.cross.validation$finalModel)</code></pre>
+<pre><code>## 
+## Call:
+##  randomForest(x = x, y = y, mtry = param$mtry) 
+##                Type of random forest: classification
+##                      Number of trees: 500
+## No. of variables tried at each split: 28
+## 
+##         OOB estimate of  error rate: 0.09%
+## Confusion matrix:
+##      A    B    C    D    E class.error
+## A 3905    1    0    0    0   0.0002560
+## B    1 2656    1    0    0   0.0007524
+## C    0    3 2390    3    0   0.0025042
+## D    0    0    2 2248    2   0.0017762
+## E    0    0    0    0 2525   0.0000000</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">plot</span>(rf.fit.cross.validation$finalModel)</code></pre>
+<div class="figure">
+<img src="figure/finalModel.png" alt="plot of chunk finalModel" /><p class="caption">plot of chunk finalModel</p>
+</div>
+<p>We can validate that the error rates are very very low and the confusion matrix looks impressively good.</p>
+<p>Since, we've separated the initial training data, we can have a look at the confusion matrix on the validation set. This will confort us for the last phase which consist of the classification of observed data and the sublission to the course webpage on Coursera.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">confusionMatrix</span>(<span class="kw">predict</span>(rf.fit.cross.validation, 
+                        <span class="dt">newdata=</span>validation.set), validation.set$classe)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1674    0    0    0    0
+##          B    0 1139    1    0    0
+##          C    0    0 1025    0    0
+##          D    0    0    0  964    3
+##          E    0    0    0    0 1079
+## 
+## Overall Statistics
+##                                     
+##                Accuracy : 0.999     
+##                  95% CI : (0.998, 1)
+##     No Information Rate : 0.284     
+##     P-Value [Acc &gt; NIR] : &lt;2e-16    
+##                                     
+##                   Kappa : 0.999     
+##  Mcnemar&#39;s Test P-Value : NA        
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity             1.000    1.000    0.999    1.000    0.997
+## Specificity             1.000    1.000    1.000    0.999    1.000
+## Pos Pred Value          1.000    0.999    1.000    0.997    1.000
+## Neg Pred Value          1.000    1.000    1.000    1.000    0.999
+## Prevalence              0.284    0.194    0.174    0.164    0.184
+## Detection Rate          0.284    0.194    0.174    0.164    0.183
+## Detection Prevalence    0.284    0.194    0.174    0.164    0.183
+## Balanced Accuracy       1.000    1.000    1.000    1.000    0.999</code></pre>
+<p>As we can see, the accuracy is rather high and gives us a error rate almost neglictable.</p>
+<p>Now that we validated the model, we can head into it to see which variable are important, like so</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">plot</span>(<span class="kw">varImp</span>(rf.fit.cross.validation))</code></pre>
+<p><img src="figure/unnamed-chunk-8.png" alt="plot of chunk unnamed-chunk-8" /> An interpretation could, at least, be that we could also get rid of the timestamps since they are highly correlated with the user (and thus with the index), same goes for the <code>num_window</code> one. So the variance increase with different data set, we'll know where adaptation can be made. See the three pictures below.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">plot</span>(training$raw_timestamp_part_1, <span class="dt">col=</span>training$user_name)</code></pre>
+<div class="figure">
+<img src="figure/correlated1.png" alt="plot of chunk correlated" /><p class="caption">plot of chunk correlated</p>
+</div>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">plot</span>(training$raw_timestamp_part_2, <span class="dt">col=</span>training$user_name)</code></pre>
+<div class="figure">
+<img src="figure/correlated2.png" alt="plot of chunk correlated" /><p class="caption">plot of chunk correlated</p>
+</div>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">plot</span>(training$num_window, <span class="dt">col=</span>training$user_name)</code></pre>
+<div class="figure">
+<img src="figure/correlated3.png" alt="plot of chunk correlated" /><p class="caption">plot of chunk correlated</p>
+</div>
+<h2 id="submission">Submission</h2>
+<p>The project requires us to submit our prediction for 20 observations. For that, we'll again use the <code>caret</code>'s <code>predict</code> function.</p>
+<pre class="sourceCode r"><code class="sourceCode r">test_prediction&lt;-<span class="kw">predict</span>(rf.fit.cross.validation, <span class="dt">newdata=</span>testing.neat)
+<span class="co"># show the prediction for the non classified data</span>
+test_prediction</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
+<p>Since this process is rather boring (needs to create a file per submission) I'll use the function, gently, provided by the professor.</p>
+<pre class="sourceCode r"><code class="sourceCode r">  pml_write_files =<span class="st"> </span>function(x){
+    n =<span class="st"> </span><span class="kw">length</span>(x)
+    for(i in <span class="dv">1</span>:n){
+      filename =<span class="st"> </span><span class="kw">paste0</span>(<span class="st">&quot;problem_id_&quot;</span>,i,<span class="st">&quot;.txt&quot;</span>)
+      <span class="kw">write.table</span>(x[i],<span class="dt">file=</span>filename,<span class="dt">quote=</span><span class="ot">FALSE</span>,
+                  <span class="dt">row.names=</span><span class="ot">FALSE</span>,<span class="dt">col.names=</span><span class="ot">FALSE</span>)
+    }
+  }
+  <span class="kw">pml_write_files</span>(test_prediction)  </code></pre>
