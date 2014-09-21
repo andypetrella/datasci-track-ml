@@ -5,6 +5,8 @@ dl <- function (u, ...) {
   f    
 }
 
+set.seed(12345)
+
 training.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 testing.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
 training <- read.csv(dl(training.url))
@@ -28,6 +30,9 @@ Filter(function(x) x > 0, sapply(training, function(col) sum(col == "#DIV/0!")) 
 na.strings <- c("", "NA", "#DIV/0!")
 training <- read.csv(dl(training.url), na.strings=na.strings)
 testing <- read.csv(dl(testing.url), na.strings=na.strings)
+
+# "X" is simply the index of the rows so we can get rid of it
+training <- training[, -1]
 
 with.nas <- sort(Filter(function(x) x > 0, sapply(training, function(x)sum(is.na(x))) / dd[1]))
 
@@ -58,6 +63,10 @@ training.set <- training.neat[inTrain,]
 validation.set <- training.neat[-inTrain,]
 
 # let's run a RF on the remaning vars in the training set
+# first let's try to use cores efficiently...
+library(doMC)
+registerDoMC(cores = 8)
+
 rf.fit.cross.validation <- train(
                             training.set$classe ~ .,
                             data=training.set, 
@@ -65,7 +74,6 @@ rf.fit.cross.validation <- train(
                             trControl=trainControl(method = "cv", number = 10)
                           )
 save(rf.fit.cross.validation,file="rf.fit.cross.validation_wo_X.RData")
-rf.fit.cross.validation$results
 
 rf.fit.cross.validation$results
 rf.fit.cross.validation$bestTune
